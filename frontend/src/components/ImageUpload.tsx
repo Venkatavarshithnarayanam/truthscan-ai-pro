@@ -1,4 +1,6 @@
 import React, { useCallback, useState } from 'react';
+import { UploadCloud, Image as ImageIcon } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ImageUploadProps {
   onFileSelected: (file: File) => void;
@@ -8,75 +10,88 @@ interface ImageUploadProps {
 const ImageUpload: React.FC<ImageUploadProps> = ({ onFileSelected, isAnalyzing }) => {
   const [isDragging, setIsDragging] = useState(false);
 
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setIsDragging(true);
+    } else if (e.type === 'dragleave') {
+      setIsDragging(false);
+    }
+  }, []);
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       setIsDragging(false);
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith('image/')) {
-        onFileSelected(file);
+
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        onFileSelected(e.dataTransfer.files[0]);
       }
     },
     [onFileSelected]
   );
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const handleFileInput = useCallback(
+  const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        onFileSelected(file);
+      if (e.target.files && e.target.files[0]) {
+        onFileSelected(e.target.files[0]);
       }
     },
     [onFileSelected]
   );
 
   return (
-    <div
-      className={`upload-zone flex flex-col items-center justify-center p-10 text-center ${
-        isDragging ? 'dragging' : ''
-      }`}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onClick={() => document.getElementById('file-input')?.click()}
-    >
-      <input
-        id="file-input"
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileInput}
-        disabled={isAnalyzing}
-      />
-      <div className="mb-4">
-        <svg
-          className="w-16 h-16 text-gray-300 mx-auto"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-          />
-        </svg>
-      </div>
-      <p className="text-lg font-semibold text-gray-600 mb-1">
-        {isDragging ? 'Drop your image here' : 'Drag & drop an image'}
-      </p>
-      <p className="text-sm text-gray-400 mb-4">or click to browse files</p>
-      <p className="text-xs text-gray-300">Supports JPEG, PNG, WebP, BMP • Max 50MB</p>
+    <div className="w-full max-w-2xl mx-auto">
+      <motion.div
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        className={`relative mt-2 flex justify-center rounded-3xl border-2 border-dashed px-6 py-20 transition-all duration-300 ${
+          isDragging
+            ? 'border-blue-500 bg-blue-50/50 scale-[1.02] shadow-xl shadow-blue-500/10'
+            : 'border-slate-300 hover:border-blue-400 bg-slate-50 hover:bg-slate-100/50'
+        }`}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+      >
+        <div className="text-center">
+          <motion.div 
+            initial={false}
+            animate={{ y: isDragging ? -10 : 0, scale: isDragging ? 1.1 : 1 }}
+            className="flex justify-center"
+          >
+            <div className={`w-20 h-20 mb-6 rounded-2xl flex items-center justify-center transition-colors duration-300 shadow-sm ${
+              isDragging ? 'bg-blue-500 text-white' : 'bg-white text-blue-500 ring-1 ring-slate-200'
+            }`}>
+              <UploadCloud size={40} strokeWidth={1.5} />
+            </div>
+          </motion.div>
+          <div className="mt-4 flex text-sm leading-6 text-slate-600 justify-center">
+            <label
+              htmlFor="file-upload"
+              className="relative cursor-pointer rounded-md bg-transparent font-semibold text-blue-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2 hover:text-blue-500 transition-colors"
+            >
+              <span>Upload a file</span>
+              <input
+                id="file-upload"
+                name="file-upload"
+                type="file"
+                className="sr-only"
+                accept="image/jpeg,image/png,image/webp,image/bmp,image/gif"
+                onChange={handleChange}
+                disabled={isAnalyzing}
+              />
+            </label>
+            <p className="pl-1">or drag and drop</p>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500 font-medium">
+            PNG, JPG, WEBP or GIF up to 50MB
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 };

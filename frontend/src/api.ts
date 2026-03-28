@@ -37,11 +37,13 @@ export interface AnalysisResult {
   };
 }
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 export async function analyzeImage(file: File): Promise<AnalysisResult> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch('/analyze', {
+  const response = await fetch(`${API_URL}/analyze`, {
     method: 'POST',
     body: formData,
   });

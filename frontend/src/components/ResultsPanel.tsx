@@ -1,4 +1,6 @@
 import React from 'react';
+import { motion } from 'framer-motion';
+import { ShieldCheck, ShieldAlert, AlertTriangle, ChevronRight, Tag, Info } from 'lucide-react';
 import type { AnalysisResult } from '../api';
 import ProgressBar from './ProgressBar';
 
@@ -7,155 +9,193 @@ interface ResultsPanelProps {
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({ result }) => {
-  const aiPct = Math.round(result.ai_probability * 100);
+  const isAI = result.ai_probability > 0.6;
+  const isLikelyReal = result.ai_probability < 0.4;
+  
+  // Dynamic styling based on result
+  const primaryColor = isAI ? 'text-rose-600' : isLikelyReal ? 'text-emerald-600' : 'text-amber-500';
+  const bgSoft = isAI ? 'bg-rose-50' : isLikelyReal ? 'bg-emerald-50' : 'bg-amber-50';
+  const borderSoft = isAI ? 'border-rose-100' : isLikelyReal ? 'border-emerald-100' : 'border-amber-100';
+  const barColorPrimary = isAI ? 'red' : isLikelyReal ? 'green' : 'yellow';
 
-  const getScoreBadgeClass = () => {
-    if (aiPct >= 70) return 'high';
-    if (aiPct >= 40) return 'medium';
-    return 'low';
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1,
+      },
+    },
   };
 
-  const getBarColor = (value: number): 'red' | 'blue' | 'green' | 'gray' => {
-    if (value >= 50) return 'red';
-    if (value >= 20) return 'blue';
-    return 'gray';
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
   };
 
   return (
-    <div className="space-y-6 animate-fade-in-up">
-      {/* Header: Label + Big Score */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">{result.label}</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Confidence: <span className="font-semibold text-gray-600">{result.confidence}</span>
-          </p>
-        </div>
-        <div className={`score-badge ${getScoreBadgeClass()} text-4xl w-24 h-24 rounded-2xl shadow-lg`}>
-          {aiPct}%
-        </div>
-      </div>
-
-      {/* Primary Bars: GenAI + Face Manipulation */}
-      <div className="space-y-3">
-        <ProgressBar
-          label="GenAI"
-          value={result.breakdown.genai}
-          color={getBarColor(result.breakdown.genai)}
-          tooltip="Probability that image was created by an AI model"
-        />
-        <ProgressBar
-          label="Face manipulation"
-          value={result.breakdown.face_manipulation}
-          color={getBarColor(result.breakdown.face_manipulation)}
-          tooltip="Probability that facial features have been manipulated"
-        />
-      </div>
-
-      {/* Diffusion + GAN side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Diffusion Breakdown */}
-        <div className="animate-slide-in-right" style={{ animationDelay: '0.1s' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Diffusion</h3>
-            <span className="text-xs text-gray-400 cursor-help" title="Attribution to diffusion-based AI models">?</span>
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-6"
+    >
+      {/* 1. Top Hero Result Card */}
+      <motion.div variants={itemVariants} className={`p-6 sm:p-8 rounded-3xl border ${borderSoft} ${bgSoft} relative overflow-hidden`}>
+        {/* Background glow */}
+        <div className={`absolute -right-20 -top-20 w-64 h-64 rounded-full blur-3xl opacity-20 ${
+          isAI ? 'bg-rose-500' : isLikelyReal ? 'bg-emerald-500' : 'bg-amber-400'
+        }`} />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              {isAI ? (
+                <ShieldAlert className="w-8 h-8 text-rose-500" />
+              ) : isLikelyReal ? (
+                <ShieldCheck className="w-8 h-8 text-emerald-500" />
+              ) : (
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+              )}
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">
+                {result.label}
+              </h2>
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${
+                isAI ? 'bg-rose-100 text-rose-700 border-rose-200' : 
+                isLikelyReal ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
+                'bg-amber-100 text-amber-700 border-amber-200'
+              }`}>
+                Confidence: {result.confidence}
+              </span>
+              <span className="text-slate-500 text-sm font-medium">
+                Analysis time: {result.metadata.analysis_time_ms}ms
+              </span>
+            </div>
           </div>
-          <div className="space-y-2.5">
-            <ProgressBar label="GPT" value={result.breakdown.diffusion.gpt} color="red" size="sm" />
-            <ProgressBar label="Other" value={result.breakdown.diffusion.others} color="gray" size="sm" />
-            <ProgressBar label="Stable Diffusion" value={result.breakdown.diffusion.stable_diffusion} color="gray" size="sm" />
-            <ProgressBar label="Recraft" value={result.breakdown.diffusion.recraft} color="gray" size="sm" />
-            <ProgressBar label="Qwen" value={result.breakdown.diffusion.qwen} color="gray" size="sm" />
-            <ProgressBar label="Midjourney" value={result.breakdown.diffusion.midjourney} color="gray" size="sm" />
-            <ProgressBar label="Imagen / Nano Banana" value={result.breakdown.diffusion.imagen} color="gray" size="sm" />
-            <ProgressBar label="Dall-E" value={result.breakdown.diffusion.dalle} color="gray" size="sm" />
+          <div className="flex flex-col items-end">
+            <span className={`text-6xl sm:text-7xl font-black tracking-tighter ${primaryColor}`}>
+              {Math.round(result.ai_probability * 100)}<span className="text-4xl sm:text-5xl opacity-50">%</span>
+            </span>
+            <span className="text-slate-500 font-medium uppercase tracking-wider text-xs mt-1">AI Probability</span>
           </div>
         </div>
+      </motion.div>
 
-        {/* GAN + Other */}
-        <div className="animate-slide-in-right" style={{ animationDelay: '0.2s' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">GAN</h3>
-            <span className="text-xs text-gray-400 cursor-help" title="Attribution to GAN-based AI models">?</span>
-          </div>
-          <div className="space-y-2.5 mb-6">
-            <ProgressBar label="StyleGAN" value={result.breakdown.gan.stylegan} color="blue" size="sm" />
-            <ProgressBar label="Others" value={result.breakdown.gan.others} color="gray" size="sm" />
-          </div>
-
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Other</h3>
-            <span className="text-xs text-gray-400 cursor-help" title="Other manipulation indicators">?</span>
-          </div>
-          <div className="space-y-2.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 2. Primary Scores */}
+        <motion.div variants={itemVariants} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-6">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            Core Analysis
+          </h3>
+          
+          <ProgressBar
+            label="Generative AI Score"
+            percentage={result.breakdown.genai}
+            color={barColorPrimary}
+            subLabel="Base model prediction"
+          />
+          
+          {result.metadata.faces_detected > 0 && (
             <ProgressBar
-              label="Face manipulation"
-              value={result.breakdown.face_manipulation}
-              color={result.breakdown.face_manipulation >= 50 ? 'red' : 'gray'}
-              size="sm"
+              label="Face Manipulation"
+              percentage={result.breakdown.face_manipulation}
+              color="purple"
+              subLabel={`${result.metadata.faces_detected} face(s) detected`}
             />
+          )}
+
+          <ProgressBar
+            label="Forensic Anomaly"
+            percentage={Math.round(result.metadata.forensic_score * 100)}
+            color="gray"
+            subLabel="Noise, blur, and edge inconsistencies"
+          />
+        </motion.div>
+
+        {/* 3. Model Breakdown */}
+        <motion.div variants={itemVariants} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-6">
+          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+            Model Attribution
+          </h3>
+          
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Diffusion Models</h4>
+            <div className="space-y-3">
+              <ProgressBar label="GPT/DALL·E" percentage={result.breakdown.diffusion.gpt} color="blue" />
+              <ProgressBar label="MidJourney" percentage={result.breakdown.diffusion.midjourney} color="blue" />
+              <ProgressBar label="Stable Diffusion" percentage={result.breakdown.diffusion.stable_diffusion} color="blue" />
+            </div>
+            
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider pt-2">GAN Architecture</h4>
+            <div className="space-y-3">
+              <ProgressBar label="StyleGAN" percentage={result.breakdown.gan.stylegan} color="purple" />
+              <ProgressBar label="Other GANs" percentage={result.breakdown.gan.others} color="purple" />
+            </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
-      {/* Tags */}
-      {result.tags.length > 0 && (
-        <div className="animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-          <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3">Detected Tags</h3>
+      {/* 4. Scene Context / Tags */}
+      {result.tags && result.tags.length > 0 && (
+        <motion.div variants={itemVariants} className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+          <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
+            <Tag className="w-4 h-4 text-slate-400" />
+            Scene Context
+          </h3>
           <div className="flex flex-wrap gap-2">
             {result.tags.map((tag, i) => (
-              <span key={i} className="tag-pill">{tag}</span>
+              <span 
+                key={i} 
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-xl shadow-sm hover:border-blue-300 hover:text-blue-600 transition-colors cursor-default"
+              >
+                {tag}
+              </span>
             ))}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {/* Explanation */}
-      <div className="animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-        <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3">Detailed Reasoning</h3>
-        <div className="bg-gray-50 rounded-xl p-5 border border-gray-100">
-          <p className="text-sm text-gray-600 leading-relaxed mb-4">{result.explanation.summary}</p>
-
-          {result.explanation.key_indicators.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Key Indicators</h4>
-              <ul className="space-y-1.5">
-                {result.explanation.key_indicators.map((indicator, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                    <span className="text-blue-500 mt-0.5 shrink-0">●</span>
-                    {indicator}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {result.explanation.visual_patterns.length > 0 && (
-            <div>
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Visual Patterns</h4>
-              <ul className="space-y-1.5">
-                {result.explanation.visual_patterns.map((pattern, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
-                    <span className="text-purple-500 mt-0.5 shrink-0">◆</span>
-                    {pattern}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+      {/* 5. Detailed Explanation */}
+      <motion.div variants={itemVariants} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
+        <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-400 to-indigo-600" />
+        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <Info className="w-5 h-5 text-blue-500" />
+          Detailed Reasoning
+        </h3>
+        <p className="text-slate-600 leading-relaxed mb-6 font-medium">
+          {result.explanation.summary}
+        </p>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="bg-slate-50 p-4 rounded-2xl">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Key Indicators</h4>
+            <ul className="space-y-2">
+              {result.explanation.key_indicators.map((indicator, i) => (
+                <li key={i} className="flex items-start text-sm text-slate-700">
+                  <ChevronRight className="w-4 h-4 text-blue-500 mr-1 shrink-0 mt-0.5" />
+                  <span>{indicator}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="bg-slate-50 p-4 rounded-2xl">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Visual Patterns</h4>
+            <ul className="space-y-2">
+              {result.explanation.visual_patterns.map((pattern, i) => (
+                <li key={i} className="flex items-start text-sm text-slate-700">
+                  <ChevronRight className="w-4 h-4 text-purple-500 mr-1 shrink-0 mt-0.5" />
+                  <span>{pattern}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </div>
-
-      {/* Metadata Footer */}
-      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-400 pt-2 border-t border-gray-100">
-        <span>File: {result.metadata.file_type}</span>
-        <span>Size: {result.metadata.file_size}</span>
-        <span>Dimensions: {result.metadata.image_dimensions}</span>
-        <span>Faces: {result.metadata.faces_detected}</span>
-        <span>Analysis: {result.metadata.analysis_time_ms}ms</span>
-        <span>Forensic: {(result.metadata.forensic_score * 100).toFixed(1)}%</span>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

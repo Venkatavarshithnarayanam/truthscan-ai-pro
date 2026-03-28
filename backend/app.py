@@ -27,17 +27,21 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info(f"TruthScan AI Pro starting on device: {DEVICE}")
 
 
+MODEL_INITIALIZED = False
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: load model on startup."""
+    global MODEL_INITIALIZED
     logger.info("Initializing TruthScan AI Pro (Inference Mode)...")
     try:
         from backend.inference import load_model
         load_model()
+        MODEL_INITIALIZED = True
         logger.info("Model loaded successfully. Ready for inference.")
     except Exception as e:
         logger.error(f"FATAL: Model initialization failed: {e}")
-        raise RuntimeError("Model not found or failed to load. Please run training manually.")
+        MODEL_INITIALIZED = False
     yield
     logger.info("Shutting down TruthScan AI Pro.")
 
@@ -62,12 +66,14 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    from backend.inference import is_model_ready, get_model_info
+    global MODEL_INITIALIZED
+    from backend.inference import get_model_info
     return {
-        "status": "healthy",
+        "status": "healthy" if MODEL_INITIALIZED else "degraded",
         "device": DEVICE,
         "cuda_available": torch.cuda.is_available(),
         "model": get_model_info(),
+        "model_initialized": MODEL_INITIALIZED
     }
 
 
@@ -81,6 +87,13 @@ async def analyze_image(file: UploadFile = File(...)):
 
     Returns complete analysis with probability, breakdown, tags, and explanation.
     """
+    global MODEL_INITIALIZED
+    if not MODEL_INITIALIZED:
+        raise HTTPException(
+            status_code=503,
+            detail="Model weights not found on server. Please ensure ai_detector.pth is successfully uploaded to backend/models/."
+        )
+
     # Validate file type
     allowed_types = {"image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"}
     content_type = file.content_type or ""
