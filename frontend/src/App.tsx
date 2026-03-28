@@ -13,24 +13,32 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<Array<{file: File, preview: string, result: AnalysisResult}>>([]);
 
   const handleFileSelected = useCallback(async (file: File) => {
     setSelectedFile(file);
     setResult(null);
     setError(null);
 
-    // Create preview
+    setIsAnalyzing(true);
+    let previewUrl = '';
     const reader = new FileReader();
     reader.onload = (e) => {
-      setImagePreview(e.target?.result as string);
+      previewUrl = e.target?.result as string;
+      setImagePreview(previewUrl);
     };
     reader.readAsDataURL(file);
 
-    // Auto-analyze
-    setIsAnalyzing(true);
     try {
       const analysisResult = await analyzeImage(file);
       setResult(analysisResult);
+      
+      // Save to history
+      setHistory(prev => {
+        // Don't add duplicates
+        if (prev.some(h => h.file.name === file.name && h.file.size === file.size)) return prev;
+        return [{file, preview: previewUrl, result: analysisResult}, ...prev].slice(0, 10); // Keep last 10
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
@@ -102,6 +110,47 @@ function App() {
               <div className="bg-white p-8 sm:p-12 rounded-[2rem] shadow-2xl shadow-slate-900/5 border border-slate-100/50 backdrop-blur-xl">
                 <ImageUpload onFileSelected={handleFileSelected} isAnalyzing={isAnalyzing} />
               </div>
+              
+              {/* Upload History */}
+              {history.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="mt-16 text-left"
+                >
+                  <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+                    <ScanLine className="w-5 h-5 text-blue-400" />
+                    Recent Scans
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {history.map((item, idx) => (
+                      <div 
+                        key={idx}
+                        onClick={() => {
+                          setSelectedFile(item.file);
+                          setImagePreview(item.preview);
+                          setResult(item.result);
+                          setError(null);
+                        }}
+                        className="bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md rounded-2xl p-4 cursor-pointer transition-all hover:scale-[1.02] group"
+                      >
+                        <div className="flex gap-4 items-center">
+                          <img src={item.preview} className="w-16 h-16 rounded-xl object-cover shadow-sm bg-slate-900/50" alt="History thumbnail" />
+                          <div className="overflow-hidden">
+                            <p className="text-slate-100 font-bold text-sm truncate">{item.file.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`w-2 h-2 rounded-full ${item.result.ai_probability > 0.7 ? 'bg-rose-500' : item.result.ai_probability < 0.3 ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                              <p className="text-slate-400 text-xs font-medium">
+                                {Math.round(item.result.ai_probability * 100)}% AI
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
             </motion.div>
           ) : (
             /* Analysis & Results State */

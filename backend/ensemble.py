@@ -49,14 +49,19 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
     image_bgr = preprocess_for_opencv(image)
 
     # Step 1: Primary AI detection
-    logger.info("Running EfficientNet-B3 AI detection...")
-    try:
-        ai_probability = ai_predict(image)
-    except Exception as e:
-        logger.error(f"AI detection failed: {e}")
-        ai_probability = 0.5  # Neutral fallback
-
-    logger.info(f"AI probability: {ai_probability:.4f}")
+    from backend.app import MODEL_INITIALIZED
+    
+    if MODEL_INITIALIZED:
+        logger.info("Running EfficientNet-B3 AI detection...")
+        try:
+            ai_probability = ai_predict(image)
+        except Exception as e:
+            logger.error(f"AI detection failed: {e}")
+            ai_probability = 0.5  # Neutral fallback
+        logger.info(f"AI probability: {ai_probability:.4f}")
+    else:
+        logger.info("Model not initialized. Bypassing EfficientNet-B3 (Fallback Mode).")
+        ai_probability = None
 
     # Step 2: OpenCV forensic analysis
     logger.info("Running OpenCV forensic analysis...")
@@ -142,30 +147,21 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
             "analysis_time_ms": int(elapsed * 1000),
             "faces_detected": face_analysis["face_count"],
             "forensic_score": round(forensic_results.get("forensic_score", 0), 4),
-            "model_ready": is_model_ready(),
+            "model_ready": MODEL_INITIALIZED,
         },
         "explanation": explanation,
     }
 
 
 def _ensemble_fusion(
-    ai_prob: float,
+    ai_prob: float | None,
     forensic: dict,
     face_analysis: dict,
 ) -> float:
     """Fuse AI detection probability with forensic signals.
 
-    The forensic score adjusts the raw model output. If forensic
-    analysis agrees with the model, confidence increases. If they
-    disagree, the probability is moderated.
-
-    Args:
-        ai_prob: Raw EfficientNet prediction.
-        forensic: OpenCV forensic analysis results.
-        face_analysis: Face manipulation analysis results.
-
-    Returns:
-        Adjusted AI probability (0-1).
+    If AI model is present, uses weights: 0.6 model + 0.4 forensic (+ face boost).
+    If AI model is missing, falls back purely to forensic heuristics.
     """
     forensic_score = forensic.get("forensic_score", 0.5)
 
@@ -174,16 +170,14 @@ def _ensemble_fusion(
     if face_analysis.get("has_faces", False):
         face_manip = face_analysis.get("manipulation_score", 0.0)
         if face_manip > 0.5:
-            face_boost = face_manip * 0.1  # Up to 0.1 boost
+            face_boost = face_manip * 0.15  # Up to 0.15 boost based on severe face warping
 
-    # Ensemble: weighted combination
-    # Model output is primary (70%), forensic is supportive (20%), face (10%)
-    adjusted = (
-        ai_prob * 0.70 +
-        forensic_score * 0.20 +
-        face_boost * 0.10 +
-        ai_prob * face_boost  # Interaction term
-    )
+    if ai_prob is not None:
+        # Full Ensemble: User's requested 60/40 combination
+        adjusted = (ai_prob * 0.60) + (forensic_score * 0.40) + face_boost
+    else:
+        # Fallback Heuristic
+        adjusted = forensic_score + (face_boost * 2.0)
 
     # Clamp to [0, 1]
     adjusted = float(np.clip(adjusted, 0.0, 1.0))

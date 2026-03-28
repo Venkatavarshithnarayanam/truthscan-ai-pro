@@ -11,6 +11,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 import torch
+import hashlib
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -77,6 +78,9 @@ async def health_check():
     }
 
 
+# In-memory cache to save compute on lifetime-free tiers
+_ANALYSIS_CACHE = {}
+
 @app.post("/analyze")
 async def analyze_image(file: UploadFile = File(...)):
     """Analyze an uploaded image for AI generation detection.
@@ -87,19 +91,13 @@ async def analyze_image(file: UploadFile = File(...)):
 
     Returns complete analysis with probability, breakdown, tags, and explanation.
     """
-    global MODEL_INITIALIZED
-    if not MODEL_INITIALIZED:
-        raise HTTPException(
-            status_code=503,
-            detail="Model weights not found on server. Please ensure ai_detector.pth is successfully uploaded to backend/models/."
-        )
-
     # Validate file type
     allowed_types = {"image/jpeg", "image/png", "image/webp", "image/bmp", "image/gif"}
     content_type = file.content_type or ""
 
     if content_type not in allowed_types:
         # Also check by extension
+        from pathlib import Path
         ext = Path(file.filename or "").suffix.lower()
         if ext not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}:
             raise HTTPException(
@@ -107,7 +105,7 @@ async def analyze_image(file: UploadFile = File(...)):
                 detail=f"Unsupported file type: {content_type}. Supported: JPEG, PNG, WebP, BMP, GIF."
             )
 
-    # Read file
+    # Read file and check cache
     try:
         contents = await file.read()
         file_size = len(contents)
@@ -117,6 +115,12 @@ async def analyze_image(file: UploadFile = File(...)):
 
         if file_size > 50 * 1024 * 1024:  # 50MB limit
             raise HTTPException(status_code=400, detail="File too large. Maximum 50MB.")
+            
+        # Fast MD5 cache lookup
+        file_hash = hashlib.md5(contents).hexdigest()
+        if file_hash in _ANALYSIS_CACHE:
+            logger.info(f"Cache hit! Returning instant result for {file_hash[:8]}")
+            return JSONResponse(content=_ANALYSIS_CACHE[file_hash])
 
         image = Image.open(io.BytesIO(contents)).convert("RGB")
 
@@ -134,6 +138,14 @@ async def analyze_image(file: UploadFile = File(...)):
             file_size=file_size,
             file_type=content_type or "image/jpeg",
         )
+        
+        # Save to cache before returning
+        _ANALYSIS_CACHE[file_hash] = result
+        
+        # Keep cache from growing infinitely
+        if len(_ANALYSIS_CACHE) > 100:
+            _ANALYSIS_CACHE.pop(next(iter(_ANALYSIS_CACHE)))
+            
         return JSONResponse(content=result)
 
     except Exception as e:
