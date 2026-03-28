@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for OpenCV
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY backend/requirements.txt /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+# Copy backend source code
+COPY backend/ /app/backend/
+
+# Create models directory
+RUN mkdir -p /app/backend/models
+
+# Expose port
+EXPOSE 8001
+
+# Start the FastAPI server
+CMD ["python", "-m", "backend.app"]
