@@ -28,34 +28,10 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info(f"TruthScan AI Pro starting on device: {DEVICE}")
 
 
-MODEL_INITIALIZED = False
-
-def load_model_async():
-    global MODEL_INITIALIZED
-    logger.info("Background thread: Loading TruthScan AI model...")
-    try:
-        from inference import load_model
-        load_model()
-        MODEL_INITIALIZED = True
-        logger.info("Model loaded successfully. Ready for full inference.")
-    except Exception as e:
-        logger.error(f"Model initialization failed: {e}")
-        MODEL_INITIALIZED = False
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: start background model load on startup."""
-    logger.info("Starting FastAPI Server (falling back to heuristics momentarily)...")
-    threading.Thread(target=load_model_async, daemon=True).start()
-    yield
-    logger.info("Shutting down TruthScan AI Pro.")
-
-
 app = FastAPI(
     title="TruthScan AI Pro",
     description="Production-grade AI image detection system using multi-model ensemble",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
 # CORS — allow frontend
@@ -71,14 +47,13 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    global MODEL_INITIALIZED
-    from inference import get_model_info
+    from inference import get_model_info, is_model_ready
     return {
-        "status": "healthy" if MODEL_INITIALIZED else "degraded",
+        "status": "healthy" if is_model_ready() else "degraded",
         "device": DEVICE,
         "cuda_available": torch.cuda.is_available(),
         "model": get_model_info(),
-        "model_initialized": MODEL_INITIALIZED
+        "model_initialized": is_model_ready()
     }
 
 

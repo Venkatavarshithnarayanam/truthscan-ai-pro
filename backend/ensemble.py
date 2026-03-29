@@ -48,10 +48,16 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
     # Convert to OpenCV format for forensic analysis
     image_bgr = preprocess_for_opencv(image)
 
-    # Step 1: Primary AI detection
-    from app import MODEL_INITIALIZED
-    
-    if MODEL_INITIALIZED:
+    # Step 1: Primary AI detection -> Lazy Load attempt
+    model_ready = False
+    try:
+        from inference import load_model
+        load_model()
+        model_ready = True
+    except Exception as e:
+        logger.error(f"Model lazy initialization failed: {e}")
+        
+    if model_ready:
         logger.info("Running EfficientNet-B3 AI detection...")
         try:
             ai_probability = ai_predict(image)
@@ -147,7 +153,7 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
             "analysis_time_ms": int(elapsed * 1000),
             "faces_detected": face_analysis["face_count"],
             "forensic_score": round(forensic_results.get("forensic_score", 0), 4),
-            "model_ready": MODEL_INITIALIZED,
+            "model_ready": model_ready,
         },
         "explanation": explanation,
     }
