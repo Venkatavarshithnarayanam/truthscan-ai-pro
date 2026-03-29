@@ -16,7 +16,7 @@ try:
 except ImportError:
     raise ImportError("timm is required. Run: pip install timm")
 
-from backend.utils.preprocessing import preprocess_for_inference
+from utils.preprocessing import preprocess_for_inference
 
 logger = logging.getLogger(__name__)
 

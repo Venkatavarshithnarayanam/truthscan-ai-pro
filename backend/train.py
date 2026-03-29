@@ -168,7 +168,7 @@ def build_model(num_classes: int = 1, pretrained: bool = True) -> nn.Module:
 
 def get_transforms():
     """Get training and validation transforms."""
-    from backend.utils.preprocessing import get_training_transform, get_validation_transform
+    from utils.preprocessing import get_training_transform, get_validation_transform
     return get_training_transform(), get_validation_transform()
 
 

@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     global MODEL_INITIALIZED
     logger.info("Initializing TruthScan AI Pro (Inference Mode)...")
     try:
-        from backend.inference import load_model
+        from inference import load_model
         load_model()
         MODEL_INITIALIZED = True
         logger.info("Model loaded successfully. Ready for inference.")
@@ -68,7 +68,7 @@ app.add_middleware(
 async def health_check():
     """Health check endpoint."""
     global MODEL_INITIALIZED
-    from backend.inference import get_model_info
+    from inference import get_model_info
     return {
         "status": "healthy" if MODEL_INITIALIZED else "degraded",
         "device": DEVICE,
@@ -132,7 +132,7 @@ async def analyze_image(file: UploadFile = File(...)):
 
     # Run ensemble analysis
     try:
-        from backend.ensemble import analyze
+        from ensemble import analyze
         result = analyze(
             image=image,
             file_size=file_size,

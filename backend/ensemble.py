@@ -8,17 +8,17 @@ import logging
 from PIL import Image
 import numpy as np
 
-from backend.inference import predict as ai_predict, is_model_ready
-from backend.utils.preprocessing import preprocess_for_opencv
-from backend.utils.cv_analysis import analyze_image as cv_analyze
-from backend.utils.face_detection import detect_faces, analyze_face_manipulation
-from backend.utils.yolo import detect_objects
-from backend.utils.breakdown import (
+from inference import predict as ai_predict, is_model_ready
+from utils.preprocessing import preprocess_for_opencv
+from utils.cv_analysis import analyze_image as cv_analyze
+from utils.face_detection import detect_faces, analyze_face_manipulation
+from utils.yolo import detect_objects
+from utils.breakdown import (
     compute_breakdown,
     get_confidence_label,
     get_result_label,
 )
-from backend.utils.llm_explainer import generate_explanation
+from utils.llm_explainer import generate_explanation
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
     image_bgr = preprocess_for_opencv(image)
 
     # Step 1: Primary AI detection
-    from backend.app import MODEL_INITIALIZED
+    from app import MODEL_INITIALIZED
     
     if MODEL_INITIALIZED:
         logger.info("Running EfficientNet-B3 AI detection...")
