@@ -30,19 +30,23 @@ logger.info(f"TruthScan AI Pro starting on device: {DEVICE}")
 
 MODEL_INITIALIZED = False
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: load model on startup."""
+def load_model_async():
     global MODEL_INITIALIZED
-    logger.info("Initializing TruthScan AI Pro (Inference Mode)...")
+    logger.info("Background thread: Loading TruthScan AI model...")
     try:
         from inference import load_model
         load_model()
         MODEL_INITIALIZED = True
-        logger.info("Model loaded successfully. Ready for inference.")
+        logger.info("Model loaded successfully. Ready for full inference.")
     except Exception as e:
-        logger.error(f"FATAL: Model initialization failed: {e}")
+        logger.error(f"Model initialization failed: {e}")
         MODEL_INITIALIZED = False
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: start background model load on startup."""
+    logger.info("Starting FastAPI Server (falling back to heuristics momentarily)...")
+    threading.Thread(target=load_model_async, daemon=True).start()
     yield
     logger.info("Shutting down TruthScan AI Pro.")
 
