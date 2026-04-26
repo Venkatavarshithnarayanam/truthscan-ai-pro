@@ -100,9 +100,9 @@ def analyze(image: Image.Image, file_size: int = 0, file_type: str = "image/jpeg
 
     logger.info(f"Tags: {yolo_results.get('tags', [])}")
 
-    # Step 5: Ensemble fusion — adjust AI probability with forensic signals
+    # Step 5: Ensemble fusion — adjust AI probability with all signals
     adjusted_probability = _ensemble_fusion(
-        ai_probability, forensic_results, face_analysis
+        ai_probability, forensic_results, face_analysis, yolo_results
     )
     logger.info(f"Adjusted AI probability: {adjusted_probability:.4f}")
 
@@ -163,30 +163,93 @@ def _ensemble_fusion(
     ai_prob: float | None,
     forensic: dict,
     face_analysis: dict,
+    yolo_results: dict,
 ) -> float:
-    """Fuse AI detection probability with forensic signals.
+    """Fuse AI detection probability with forensic, face, and YOLO signals.
 
-    If AI model is present, uses weights: 0.6 model + 0.4 forensic (+ face boost).
-    If AI model is missing, falls back purely to forensic heuristics.
+    Implements: 0.70 * EfficientNet + 0.15 * forensic + 0.10 * face analysis + 0.05 * YOLO
+    Also reduces AI score for real portraits with low face manipulation.
     """
     forensic_score = forensic.get("forensic_score", 0.5)
 
-    # Face manipulation adds to AI probability if present
-    face_boost = 0.0
-    if face_analysis.get("has_faces", False):
-        face_manip = face_analysis.get("manipulation_score", 0.0)
-        if face_manip > 0.5:
-            face_boost = face_manip * 0.15  # Up to 0.15 boost based on severe face warping
+    has_faces = face_analysis.get("has_faces", False)
+    face_count = face_analysis.get("face_count", 0)
+    face_manip = face_analysis.get("manipulation_score", 0.5) if has_faces else 0.5
+    
+    # Image Quality Adjustment (Detect blur, compression, resolution)
+    quality_adjustment = 0.0
+    is_blurry = forensic.get("blur", {}).get("is_blurry", False)
+    blur_inc = forensic.get("blur", {}).get("blur_inconsistency", 0.0)
+    artifact_score = forensic.get("jpeg_artifacts", {}).get("artifact_score_low_q", 0.0)
+    
+    if is_blurry and blur_inc < 0.6:
+        quality_adjustment += 0.08  # Reduce for consistent natural blur
+    if artifact_score < 5.0:  # Indicates already highly compressed image
+        quality_adjustment += 0.07  # Reduce for WhatsApp-style compression
+
+    # Cap quality adjustment to 15% max
+    quality_adjustment = min(quality_adjustment, 0.15)
+    
+    # Extract texture and noise indicators
+    tex_reg = forensic.get("texture", {}).get("texture_regularity", 0.0)
+    noise_uni = forensic.get("noise", {}).get("noise_uniformity", 0.0)
+    
+    # 1. Face Discount (Stronger discount for real portraits)
+    face_penalty = 0.0
+    has_person = yolo_results.get("has_person", False)
+    tags = yolo_results.get("tags", [])
+    is_portrait = has_person or "portrait" in tags or "selfie" in tags
+    
+    if has_faces and face_manip < 0.3 and forensic_score < 0.30 and is_portrait:
+        face_penalty = 0.22  # Stronger protection for real portraits
+        
+    # 2. Portrait Bonus (Additional reduction if forensic is extremely clean)
+    portrait_bonus = 0.0
+    if has_faces and face_manip < 0.3 and is_portrait:
+        if forensic_score < 0.20:
+            portrait_bonus = 0.08
+            
+    # 3. Diffusion Boost (Force AI probability upward if signals are high)
+    ai_boost = 0.0
+    strong_ai_evidence = (ai_prob is not None and ai_prob > 0.85) or forensic_score > 0.40 or tex_reg > 0.7 or noise_uni > 0.7
+    if strong_ai_evidence:
+        ai_boost = 0.05  # Force upward unless it's a very clear real portrait
+            
+    # 4. Multi-Face AI Images (Increase suspicion if multiple faces in synthetic scene)
+    is_synthetic_scene = (ai_prob is not None and ai_prob > 0.65) or forensic_score > 0.35 or strong_ai_evidence
+    if has_faces and face_count > 1 and is_synthetic_scene:
+        face_penalty = -0.15  # Negative penalty increases final AI score
+        portrait_bonus = 0.0  # Revoke any bonuses
+        ai_boost += 0.05      # Extra boost for multi-face synthetic
+        
+    # YOLO contribution
+    yolo_score = 0.5
+    if has_person:
+        yolo_score = 0.2  # Presence of person correlates more with real photos
+    elif yolo_results.get("scene_context") == "scene":
+        yolo_score = 0.6  # Complex scenes without people
 
     if ai_prob is not None:
-        # Full Ensemble: User's requested 60/40 combination
-        adjusted = (ai_prob * 0.60) + (forensic_score * 0.40) + face_boost
+        # Full Ensemble (0.75 weight for EfficientNet)
+        base_score = (ai_prob * 0.75) + (forensic_score * 0.10) + (face_manip * 0.10) + (yolo_score * 0.05)
+        adjusted = base_score - face_penalty - portrait_bonus - quality_adjustment + ai_boost
     else:
         # Fallback Heuristic
-        adjusted = forensic_score + (face_boost * 2.0)
+        adjusted = (forensic_score * 0.60) + (face_manip * 0.30) + (yolo_score * 0.10) - face_penalty - portrait_bonus - quality_adjustment + ai_boost
 
     # Clamp to [0, 1]
     adjusted = float(np.clip(adjusted, 0.0, 1.0))
+
+    # 3. Clear Debug Logs
+    logger.info("--- DEBUG SCORE LOG ---")
+    logger.info(f"Raw EfficientNet: {ai_prob if ai_prob else 'N/A'}")
+    logger.info(f"Forensic Score: {forensic_score:.4f}")
+    logger.info(f"Face Adjustment (Penalty): -{face_penalty:.4f}")
+    logger.info(f"Portrait Bonus: -{portrait_bonus:.4f}")
+    logger.info(f"Quality Adjustment: -{quality_adjustment:.4f}")
+    logger.info(f"Diffusion Boost: +{ai_boost:.4f}")
+    logger.info(f"Final Adjusted Score: {adjusted:.4f}")
+    logger.info("-----------------------")
 
     return adjusted
 

@@ -161,7 +161,7 @@ def get_confidence_label(ai_probability: float) -> str:
     """Get human-readable confidence label."""
     if ai_probability > 0.85:
         return "High"
-    elif ai_probability > 0.6:
+    elif ai_probability > 0.65:
         return "Medium"
     else:
         return "Low"
@@ -169,9 +169,9 @@ def get_confidence_label(ai_probability: float) -> str:
 
 def get_result_label(ai_probability: float) -> str:
     """Get the detection result label."""
-    if ai_probability > 0.7:
+    if ai_probability > 0.72:
         return "Likely AI-generated"
-    elif ai_probability < 0.3:
+    elif ai_probability < 0.30:
         return "Likely Real"
     else:
         return "Uncertain"

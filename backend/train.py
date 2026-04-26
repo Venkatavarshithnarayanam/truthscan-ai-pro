@@ -178,13 +178,14 @@ def get_transforms_standalone():
     imagenet_std = [0.229, 0.224, 0.225]
 
     train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((256, 256)),
+        transforms.RandomCrop((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=10),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
         transforms.RandomApply([
-            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))
-        ], p=0.3),
+            transforms.GaussianBlur(kernel_size=5, sigma=(0.5, 3.0))
+        ], p=0.4),
         transforms.ToTensor(),
         transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
     ])
@@ -230,8 +231,8 @@ def train_model(
     except ImportError:
         train_transform, val_transform = get_transforms_standalone()
 
-    # Create datasets (Max 10k per class for training, 2k for val)
-    train_dataset = CIFAKEDataset(train_dir, transform=train_transform, max_per_class=10000)
+    # Create datasets (Max 12.5k per class for training to cap at 25k total)
+    train_dataset = CIFAKEDataset(train_dir, transform=train_transform, max_per_class=12500)
     val_dataset = CIFAKEDataset(val_dir, transform=val_transform, max_per_class=2000)
 
     if len(train_dataset) == 0:
@@ -252,10 +253,12 @@ def train_model(
     # Build model
     model = build_model(num_classes=1, pretrained=True)
 
-    # Freeze all EfficientNet layers except classifier for balanced training
-    logger.info("Freezing all layers except classifier for balanced training")
+    # Freeze early layers, unfreeze classifier and blocks.6 for fine-tuning
+    logger.info("Unfreezing classifier and blocks.6 for fine-tuning")
     for name, param in model.named_parameters():
-        if "classifier" not in name:
+        if "classifier" in name or "blocks.6" in name:
+            param.requires_grad = True
+        else:
             param.requires_grad = False
             
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -392,7 +395,7 @@ def auto_train_if_needed():
     train_dir, test_dir = find_dataset_dirs(dataset_path)
 
     # Step 3: Train balancing speed and quality
-    epochs = 2
+    epochs = 3
     batch_size = 16
 
     logger.info(f"Auto-training with {epochs} epochs, batch_size={batch_size} on {DEVICE}")

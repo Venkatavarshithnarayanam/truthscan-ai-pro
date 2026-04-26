@@ -203,14 +203,14 @@ def _compute_forensic_score(results: dict) -> float:
     """
     signals = []
 
-    # Noise uniformity — high uniformity is suspicious
+    # Noise uniformity — reduce impact so it doesn't dominate real compressed photos
     noise_uni = results["noise"]["noise_uniformity"]
-    signals.append(noise_uni * 0.25)
+    signals.append(noise_uni * 0.10)
 
-    # Low noise standard deviation is suspicious (too clean)
+    # Low noise standard deviation
     noise_std = results["noise"]["noise_std"]
     clean_score = max(0, 1.0 - noise_std / 15.0)
-    signals.append(clean_score * 0.15)
+    signals.append(clean_score * 0.10)
 
     # Blur inconsistency is suspicious
     blur_inc = results["blur"]["blur_inconsistency"]
@@ -230,4 +230,18 @@ def _compute_forensic_score(results: dict) -> float:
     signals.append(tex_reg * 0.15)
 
     score = sum(signals)
+    
+    # Image Quality Adjustment: Reduce false positives for typical mobile photos
+    is_blurry = results["blur"].get("is_blurry", False)
+    blur_inc = results["blur"].get("blur_inconsistency", 0.0)
+    noise_std = results["noise"].get("noise_std", 0.0)
+    
+    # If blurry but blur is fairly consistent (natural DSLR or motion blur)
+    if is_blurry and blur_inc < 0.6:
+        score *= 0.50  # Reduce forensic suspicion heavily for natural blur
+        
+    # If the image has high natural noise (typical low-light mobile)
+    if noise_std > 20.0:
+        score *= 0.70
+        
     return float(np.clip(score, 0.0, 1.0))
